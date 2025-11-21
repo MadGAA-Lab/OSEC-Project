@@ -1,15 +1,16 @@
 import argparse
-import contextlib
-import uvicorn
 import asyncio
+import contextlib
 import logging
+import os
+
+import uvicorn
 from dotenv import load_dotenv
-from pydantic import BaseModel
-from typing import Literal
+from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 load_dotenv()
 
-from google import genai
+from openai import OpenAI
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
@@ -35,10 +36,11 @@ logger = logging.getLogger("debate_judge")
 
 
 class DebateJudge(GreenAgent):
-    def __init__(self):
+    def __init__(self, client: OpenAI, model: str):
         self._required_roles = ["pro_debater", "con_debater"]
         self._required_config_keys = ["topic", "num_rounds"]
-        self._client = genai.Client()
+        self._client = client
+        self._model = model
         self._tool_provider = ToolProvider()
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
@@ -164,19 +166,19 @@ class DebateJudge(GreenAgent):
         Evaluate the debate on the topic: '{topic}'
         Debate analysis process and arguments are as follows:
         {debate_text}
-        Provide a JSON formatted response with scores and comments for each criterion for both debaters.
+        Provide your evaluation with scores for each criterion for both debaters.
         """
 
-        response = self._client.models.generate_content(
-            model="gemini-2.5-flash",
-            config=genai.types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    response_mime_type="application/json",
-                    response_schema=DebateEval,
-                ),
-            contents=user_prompt,
+        completion = self._client.beta.chat.completions.parse(
+            model=self._model,
+            messages=[
+                ChatCompletionSystemMessageParam(content=system_prompt, role="system"),
+                ChatCompletionUserMessageParam(content=user_prompt, role="user"),
+            ],
+            response_format=DebateEval,
         )
-        return response.parsed
+        
+        return completion.choices[0].message.parsed
 
 
 async def main():
@@ -185,7 +187,21 @@ async def main():
     parser.add_argument("--port", type=int, default=9019, help="Port to bind the server")
     parser.add_argument("--card-url", type=str, help="External URL to provide in the agent card")
     parser.add_argument("--cloudflare-quick-tunnel", action="store_true", help="Use a Cloudflare quick tunnel. Requires cloudflared. This will override --card-url")
+    parser.add_argument("--api-key", type=str, help="API key for the model provider")
+    parser.add_argument("--base-url", type=str, help="Base URL for the API endpoint")
+    parser.add_argument("--model", type=str, help="Model to use for the agent")
     args = parser.parse_args()
+
+    # Get configuration from args or environment
+    api_key = args.api_key or os.getenv("API_KEY")
+    base_url = args.base_url or os.getenv("BASE_URL")
+    model = args.model or os.getenv("DEFAULT_MODEL", "gemini-2.0-flash")
+
+    # Create OpenAI client (works with OpenAI, Azure, and most compatible APIs)
+    client = OpenAI(
+        api_key=api_key,
+        base_url=base_url
+    )
 
     if args.cloudflare_quick_tunnel:
         from agentbeats.cloudflare import quick_tunnel
@@ -194,7 +210,7 @@ async def main():
         agent_url_cm = contextlib.nullcontext(args.card_url or f"http://{args.host}:{args.port}/")
 
     async with agent_url_cm as agent_url:
-        agent = DebateJudge()
+        agent = DebateJudge(client, model)
         executor = GreenExecutor(agent)
         agent_card = debate_judge_agent_card("DebateJudge", agent_url)
 

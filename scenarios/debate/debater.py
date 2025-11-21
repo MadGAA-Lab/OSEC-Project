@@ -1,4 +1,5 @@
 import argparse
+import os
 import uvicorn
 from dotenv import load_dotenv
 load_dotenv()
@@ -16,11 +17,21 @@ def main():
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind the server")
     parser.add_argument("--port", type=int, default=9019, help="Port to bind the server")
     parser.add_argument("--card-url", type=str, help="External URL to provide in the agent card")
+    parser.add_argument("--api-key", type=str, help="API key for the model provider")
+    parser.add_argument("--model", type=str, help="Model to use for the agent")
     args = parser.parse_args()
+
+    # Get configuration from args or environment
+    api_key = args.api_key or os.getenv("API_KEY")
+    model = args.model or os.getenv("DEFAULT_MODEL", "gemini-2.0-flash")
+    
+    # Set API key if provided
+    if api_key:
+        os.environ["GOOGLE_API_KEY"] = api_key
 
     root_agent = Agent(
         name="debater",
-        model="gemini-2.0-flash",
+        model=model,
         description="Participates in a debate.",
         instruction="You are a professional debater.",
     )
