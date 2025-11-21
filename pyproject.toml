@@ -24,7 +24,9 @@ agentbeats-run = "agentbeats.run_scenario:main"
 
 [tool.uv]
 package = true
-dev-dependencies = [
+
+[dependency-groups]
+dev = [
     "mypy>=1.18.1",
 ]
 
