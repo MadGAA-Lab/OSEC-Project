@@ -184,29 +184,14 @@ Return a JSON object with these exact fields: age, gender, medical_case, symptom
 
 Return JSON only."""
 
-        completion = self.client.chat.completions.create(
+        completion = self.client.beta.chat.completions.parse(
             model=self.model,
             messages=[
                 ChatCompletionSystemMessageParam(content=system_msg, role="system"),
                 ChatCompletionUserMessageParam(content=user_msg, role="user"),
             ],
-            response_format={"type": "json_object"},
-        )
-        
-        # Parse JSON response
-        response_text = completion.choices[0].message.content
-        clinical_data = json.loads(response_text)
-        
-        # Create PatientClinicalInfo
-        clinical_info = PatientClinicalInfo(
-            age=int(clinical_data["age"]),
-            gender=clinical_data["gender"],
-            medical_case=clinical_data["medical_case"],
-            symptoms=clinical_data["symptoms"],
-            diagnosis=clinical_data["diagnosis"],
-            recommended_treatment=clinical_data["recommended_treatment"],
-            case_background=clinical_data["case_background"]
+            response_format=PatientClinicalInfo,
         )
         
         logger.info(f"Extracted clinical info for persona: {persona.persona_id}")
-        return clinical_info
+        return completion.choices[0].message.parsed
