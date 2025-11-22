@@ -117,328 +117,58 @@ System Characteristics:
 
 # 3. Functional Requirements
 
-## Feature: Patient Persona Generation
-
-Trigger Conditions:
-- Assessment request initiated by green agent
-- Specific persona combination selected (MBTI × Gender × Medical Case)
-
-Behavior:
-- Generate patient background with personality traits
-- Load medical case context (pneumothorax or lung cancer)
-- Initialize patient state with resistance level and concerns
-- Create prompt template for patient dialogue management
-
-Input Requirements:
-- MBTI personality type (16 types)
-- Gender (male/female)
-- Medical condition (pneumothorax/lung cancer)
-- Optional: Custom persona parameters
-
-Output Requirements:
-- Structured patient profile with personality traits
-- Medical case description
-- Initial patient concerns and resistance factors
-- Dialogue prompt template
-
-Error Handling:
-- Invalid persona parameters → Use default persona
-- Missing medical case data → Return error and abort assessment
-
-User Interaction:
-- None (automated persona generation)
-
-Dependencies:
-- Persona template library
-- Medical case database
-- Prompt generation system
-
----
-
 ## Feature: Round-Based Dialogue Orchestration
 
-Trigger Conditions:
-- Assessment starts with valid purple agent (doctor) endpoint
-- Patient persona initialized
+**Core Flow:**
+1. Initialize patient persona (MBTI + gender + case) → generates full system prompt + clinical info
+2. Doctor receives only PatientClinicalInfo (age, gender, illness, diagnosis) - NO personality traits
+3. Sequential rounds: Doctor → Patient → Judge (evaluate + check stop) → Continue or Generate Report
 
-Behavior:
-- **Initial Setup:**
-  - Patient persona generated with full personality traits (MBTI, background, concerns)
-  - Doctor receives only PatientClinicalInfo (age, gender, illness, diagnosis, treatment recommendation)
-  - Patient personality and behavioral traits are hidden from doctor
+**Per Round:**
+- Doctor generates response from clinical info + dialogue history
+- Patient responds using full system prompt (personality-driven, hidden from doctor)
+- Judge scores empathy, persuasion, safety (0-10 each)
+- Judge checks stop conditions (patient left/accepted/max rounds)
+- If stop: Generate PerformanceReport | If continue: Forward patient message to doctor
 
-- **Sequential Round Loop:**
-  1. Doctor generates response based on clinical info + previous dialogue history
-  2. Patient Agent receives doctor's message and generates response using full system prompt (personality-driven)
-  3. Judge Agent evaluates the round:
-     - **Stop Condition Check:**
-       - Patient explicitly left/refused dialogue → STOP
-       - Patient accepted surgical treatment → STOP
-       - Maximum rounds reached → STOP
-     - **Per-Round Evaluation:**
-       - Score empathy in doctor's message
-       - Score persuasion effectiveness
-       - Score medical safety/accuracy
-       - Track patient state change
-     - **Decision:**
-       - If stop condition met: Generate final comprehensive report
-       - If continue: Forward patient response to doctor for next round
+**Information Asymmetry:**
+- Doctor must discover personality through dialogue observation
+- Tests adaptability and emotional intelligence in realistic scenario
 
-- **Final Report Generation (when stopped):**
-  - Aggregate all per-round scores
-  - Calculate overall performance metrics
-  - Identify strengths and weaknesses
-  - Generate actionable suggestions for improvement
-  - Include numerical scores and qualitative analysis
-
-Input Requirements:
-- Doctor agent endpoint
-- Maximum dialogue rounds (default: 5)
-- Patient persona configuration (full: MBTI + gender + case)
-- Medical case details
-
-Output Requirements:
-- **Per-Round:**
-  - Round number
-  - Doctor message (generated from clinical info + dialogue history)
-  - Patient message (generated from full system prompt with personality)
-  - Per-round scores (empathy, persuasion, safety)
-  - Stop condition status
-- **Final Report (when stopped):**
-  - Complete dialogue transcript with all rounds
-  - Per-round score breakdown
-  - Overall cumulative scores
-  - Final outcome (patient_accepted / patient_left / max_rounds_reached)
-  - Strengths analysis
-  - Weaknesses analysis
-  - Actionable improvement suggestions
-  - Evidence validation summary
-
-Error Handling:
-- Doctor agent timeout → Retry with backoff, terminate after 3 failures
-- Invalid doctor response format → Request reformatted response
-- Patient agent error → Log and continue with default patient response
-- Judge evaluation error → Log warning, use default scores, continue
-
-User Interaction:
-- Real-time streaming of round progress
-- Per-round status updates
-- Final report delivery upon completion
-
-Dependencies:
-- Purple agent (doctor) A2A server
-- Patient agent with prompt manager
-- Judge agent with stop condition evaluator
-- Judge agent with per-round scoring engine
-- A2A messaging client
+See Component Specifications (Judge, Patient, Doctor) and Data Models for detailed behavior.
 
 ---
 
 ## Feature: Per-Round Evaluation and Stop Condition Detection
 
-Trigger Conditions:
-- Doctor and patient complete one round of dialogue exchange
+After each dialogue round, the Judge Agent:
+1. **Scores** empathy, persuasion, and medical safety (0-10 each)
+2. **Checks stop conditions** (patient left/accepted/max rounds)
+3. **Decides** whether to continue or generate final report
 
-Behavior:
-- **Stop Condition Detection:**
-  - Analyze patient's latest response for stop signals:
-    - Explicit refusal to continue dialogue (patient left)
-    - Explicit acceptance of surgical treatment
-    - Maximum rounds reached
-  - Return stop decision (true/false) with reason
-
-- **Per-Round Scoring (always executed):**
-  - Empathy evaluation: Analyze doctor's emotional support and rapport building
-  - Persuasion effectiveness: Measure impact on patient's receptiveness
-  - Medical safety: Validate medical claims and check for unsafe recommendations
-  - Track patient state evolution (concerns addressed, new concerns raised)
-
-- **Round Continuation Decision:**
-  - If stop condition met: Trigger final report generation
-  - If continue: Package patient response and forward to doctor for next round
-
-Input Requirements:
-- Round number
-- Doctor's message for this round
-- Patient's response for this round
-- Complete dialogue history up to this round
-- Patient persona and medical case context
-
-Output Requirements:
-- **Stop Condition Decision:**
-  - should_stop: boolean
-  - stop_reason: "patient_left" | "patient_accepted" | "max_rounds_reached" | null
-- **Per-Round Scores:**
-  - round_number: number
-  - empathy_score: number (0-10)
-  - persuasion_score: number (0-10)
-  - safety_score: number (0-10)
-  - patient_state_change: string (description of how patient's attitude changed)
-- **Next Action:**
-  - If stop: final_report_data (aggregated information for report generation)
-  - If continue: patient_message_to_forward (for next round)
-
-Error Handling:
-- Ambiguous patient response → Default to continue, flag for review
-- Scoring LLM failure → Use rule-based fallback scores
-- Stop condition evaluation error → Default to continue with warning
-
-User Interaction:
-- Stream per-round status: "Round N: Doctor spoke → Patient responded → Evaluating..."
-- Stream stop decision: "Stop condition met: [reason]" or "Continuing to Round N+1"
-
-Dependencies:
-- LLM for semantic analysis (stop condition + scoring)
-- Rule-based safety validators
-- Patient state tracker
-- Dialogue history manager
+See Component Specifications for detailed behavior.
 
 ---
 
 ## Feature: Final Comprehensive Report Generation
 
-Trigger Conditions:
-- Stop condition detected (patient left / accepted treatment / max rounds)
+When stop condition is met, generates PerformanceReport with:
+- Aggregated per-round scores (mean, trends)
+- Overall metrics and aggregate score (0-100)
+- Strengths and weaknesses analysis
+- Actionable improvement recommendations
 
-Behavior:
-- **Aggregate Per-Round Data:**
-  - Collect all per-round scores
-  - Calculate mean, min, max for each metric
-  - Identify best and worst rounds
-
-- **Overall Performance Analysis:**
-  - Calculate weighted overall score
-  - Identify consistent strengths (high scores across rounds)
-  - Identify consistent weaknesses (low scores across rounds)
-  - Detect improvement/decline trends across rounds
-
-- **Qualitative Analysis:**
-  - Extract key moments (breakthroughs, mistakes, critical turns)
-  - Analyze persuasion strategy evolution
-  - Evaluate adaptation to patient concerns
-
-- **Actionable Suggestions:**
-  - Generate specific improvement recommendations based on weaknesses
-  - Suggest alternative approaches for low-scoring rounds
-  - Highlight successful techniques to reinforce
-
-Input Requirements:
-- Complete dialogue transcript (all rounds)
-- All per-round scores
-- Stop condition reason
-- Patient persona and medical case
-- Final patient state
-
-Output Requirements:
-- **PerformanceReport:**
-  - session_id: string
-  - final_outcome: "patient_accepted" | "patient_left" | "max_rounds_reached"
-  - total_rounds: number
-  - **Per-Round Breakdown:**
-    - List of per-round scores with round numbers
-  - **Overall Scores:**
-    - overall_empathy: number (mean across rounds)
-    - overall_persuasion: number (mean across rounds)
-    - overall_safety: number (mean across rounds)
-    - aggregate_score: number (weighted overall score 0-100)
-  - **Qualitative Analysis:**
-    - strengths: [string] (list of identified strengths)
-    - weaknesses: [string] (list of identified weaknesses)
-    - key_moments: [string] (critical dialogue turns)
-  - **Suggestions:**
-    - improvement_recommendations: [string] (actionable advice)
-    - alternative_approaches: [string] (what could have been done differently)
-
-Error Handling:
-- Incomplete round data → Use available rounds, note gaps in report
-- Report generation LLM failure → Provide basic numerical summary without qualitative analysis
-
-User Interaction:
-- Stream report generation status
-- Deliver complete report when ready
-- Optional: Generate visualizations (score trends across rounds)
-
-Dependencies:
-- Statistical analysis utilities
-- LLM for qualitative analysis
-- Report formatter
-- Per-round score database
-
----
-
-## Feature: Evidence Validation (Per-Round)
-
-Trigger Conditions:
-- Doctor agent makes medical claims or recommendations in their response
-- Executed as part of per-round safety scoring
-
-Behavior:
-- Extract medical claims from doctor's response
-- Validate against medical knowledge base or guidelines
-- Flag unsupported or potentially unsafe recommendations
-- Contribute to per-round safety score
-
-Input Requirements:
-- Doctor's dialogue turn for current round
-- Medical case context
-- Reference medical guidelines (if available)
-
-Output Requirements:
-- Validation status per claim
-- Flagged safety concerns for this round
-- Safety score contribution (0-10)
-- Recommendation safety assessment
-
-Error Handling:
-- Validation service unavailable → Continue with logging, mark as unvalidated
-- Ambiguous claims → Flag for manual review
-
-User Interaction:
-- Real-time safety alerts (if critical issues detected)
-
-Dependencies:
-- Medical knowledge base
-- Claim extraction system
-- Safety rule engine
+See PerformanceReport data model and Report Generator component for details.
 
 ---
 
 ## Feature: Batch Persona Evaluation
 
-Trigger Conditions:
-- User requests evaluation across multiple persona combinations
-- Systematic benchmark execution
-
-Behavior:
-- Iterate through all persona combinations (16 MBTI × 2 genders × 2 cases = 64 evaluations)
-- Run full dialogue + evaluation for each combination
-- Aggregate results across dimensions
-- Generate comparative analysis
-
-Input Requirements:
-- Purple agent (doctor) endpoint
-- Assessment configuration (rounds, parameters)
-- Persona selection (all or subset)
-
-Output Requirements:
-- Per-persona evaluation results
-- Aggregate statistics (mean, std, min, max scores)
-- Persona-specific performance patterns
-- Visual comparison charts (optional)
-
-Error Handling:
-- Single persona failure → Log and continue with remaining personas
-- Systematic failures → Abort and report error pattern
-
-User Interaction:
-- Batch progress tracking
-- Estimated time remaining
-- Option to pause/resume batch evaluation
-
-Dependencies:
-- Scenario orchestration system
-- Result aggregation pipeline
-- Statistical analysis utilities
+Evaluates doctor agent across multiple personas (up to 64 combinations: 16 MBTI × 2 genders × 2 cases).
+- Runs full round-based dialogue for each persona
+- Generates individual PerformanceReport per persona
+- Aggregates results with statistics (mean, std, patterns)
+- Produces EvalResult with overall summary
 
 ---
 
@@ -900,479 +630,139 @@ sequenceDiagram
 
 ## Component: Judge Agent (Green Agent)
 
-Props / Inputs:
-- EvalRequest with doctor agent endpoint, persona selection, config
-- A2A task request via POST /tasks
+**Central round orchestrator** that manages the evaluation loop:
 
-Outputs:
-- Per-round evaluation results (RoundEvaluation)
-- Stop condition decisions (should_stop, reason)
-- Final PerformanceReport when dialogue terminates
-- Streaming status updates during assessment
+**Responsibilities:**
+- Initialize patient persona (via Patient Constructor)
+- Orchestrate sequential rounds:
+  1. Send PatientClinicalInfo (no personality) + dialogue history to Doctor
+  2. Forward doctor's message to Patient (uses full system prompt)
+  3. Execute per-round evaluation (empathy, persuasion, safety scores 0-10)
+  4. Check stop conditions (patient left/accepted/max rounds)
+  5. Continue → next round OR Stop → generate PerformanceReport
 
-UI Structure:
-- N/A (Backend component)
+**Key Outputs:** RoundEvaluation per round, final PerformanceReport
 
-Behavior:
-- **Round Orchestration:**
-  - Validates incoming assessment request
-  - Initializes patient persona via Patient Constructor
-  - Receives full system prompt (with personality) + clinical info subset
-  - Manages sequential round loop:
-    1. Send **PatientClinicalInfo ONLY** (no personality) + dialogue history to Doctor agent
-    2. Receive doctor's response
-    3. Forward doctor's message to Patient agent (which uses full system prompt)
-    4. Receive patient's response (personality-driven)
-    5. Execute per-round evaluation
-    6. Check stop conditions
-    7. If stop: Generate final report | If continue: Forward patient response to doctor for next round
-  
-- **Per-Round Evaluation:**
-  - Score empathy (0-10)
-  - Score persuasion effectiveness (0-10)
-  - Score medical safety (0-10)
-  - Track patient state changes
-  
-- **Stop Condition Detection:**
-  - Check if patient explicitly left/refused
-  - Check if patient accepted treatment
-  - Check if max rounds reached
-  
-- **Final Report Generation (when stopped):**
-  - Aggregate all per-round scores
-  - Calculate overall performance metrics
-  - Identify strengths and weaknesses
-  - Generate actionable improvement suggestions
-  - Create comprehensive PerformanceReport
-
-State:
-- Current assessment task ID
-- Active round number
-- Dialogue history (all turns)
-- Per-round evaluations (accumulated)
-- Patient persona context
-- Stop condition status
-
-Error States:
-- Invalid EvalRequest → Return 400 with validation errors
-- Doctor agent unavailable → Retry with exponential backoff, fail after 3 attempts
-- Per-round evaluation failure → Use fallback scores, log warning, continue
-- Stop condition detection failure → Default to continue with warning
-
-Dependencies:
-- Patient Agent (green agent)
-- Patient Constructor Agent (for persona initialization)
-- Doctor Agent (purple agent endpoint from request)
-- Per-Round Scoring Engine (internal)
-- Stop Condition Detector (internal)
-- Report Generator (internal)
-- A2A SDK for communication
-- OpenAI/LiteLLM for evaluation LLM
+**Dependencies:** Patient Agent, Patient Constructor, Doctor Agent (purple), Per-Round Scoring Engine, Stop Condition Detector, Report Generator
 
 ---
 
 ## Component: Patient Agent (Green Agent)
 
-Props / Inputs:
-- System prompt (generated by Patient Constructor)
-- Doctor's dialogue turn
-- Dialogue history
+**Simulates patient with personality-driven behavior:**
 
-Outputs:
-- Patient dialogue message
-- Decision signal (accept/reject/continue)
+**Key Feature:** Uses full system prompt (MBTI personality + background + concerns) that is **hidden from Doctor Agent**
 
-UI Structure:
-- N/A (Backend component)
-
-Behavior:
-- Uses pre-generated **full system prompt** defining personality (MBTI), background, concerns, and medical case
-- **Patient personality is hidden from Doctor Agent** - only expressed through dialogue behavior
+**Behavior:**
+- Generates patient responses using LLM with personality traits
 - Maintains dialogue history
-- Generates contextually appropriate patient responses using LLM (personality-driven)
-- Determines if patient reaches decision based on conversation flow
-- Simulates realistic patient concerns and questions based on personality type
+- Signals decision (accept/reject/continue) based on conversation
+- Personality expressed only through dialogue behavior, never directly revealed
 
-State:
-- Full system prompt with personality traits (static for session, never shared with doctor)
-- Dialogue history
-- Current decision status
-
-Error States:
-- LLM generation failure → Retry with simplified prompt, fallback to template-based response
-
-Dependencies:
-- Patient Constructor Agent (for initial full system prompt)
-- LLM backend for dialogue generation
-- A2A SDK (if exposed as separate service)
-
-**Note**: The patient's personality (MBTI type, background, concerns) is embedded in the system prompt and drives behavior, but is never directly revealed to the Doctor Agent.
+**Dependencies:** Patient Constructor (for system prompt), LLM backend
 
 ---
 
 ## Component: Patient Constructor Agent (Green Agent)
 
-Props / Inputs:
-- MBTI type prompt (from .txt file)
-- Gender prompt (from .txt file)
-- Medical case prompt (from .txt file)
+**Generates patient persona from prompt templates:**
 
-Outputs:
-- **PatientClinicalInfo:** Partial information for Doctor Agent (age, gender, illness, diagnosis, treatment)
-- **Complete system prompt:** Full prompt for Patient Agent (includes personality, background, concerns, behavioral patterns)
-- **PatientPersona object:** Contains both clinical info and full system prompt
+**Process:**
+1. Loads 3 prompts: MBTI type + gender + medical case (.txt files)
+2. Combines using LLM to create coherent background story
+3. Generates complete system prompt (personality + background + concerns)
+4. Extracts PatientClinicalInfo subset for Doctor Agent (age, gender, illness, diagnosis)
 
-UI Structure:
-- N/A (Backend component)
+**Output:** Full system prompt (for Patient) + clinical info (for Doctor)
 
-Behavior:
-- Loads 3 text prompts: MBTI personality description, gender-specific considerations, medical case details
-- Combines prompts using LLM to generate coherent patient background story
-- Creates complete system prompt that defines patient personality, background, medical situation, and dialogue behavior
-- Generates age, occupation, and other contextual details dynamically
-- **Extracts clinical information subset** (age, gender, illness, diagnosis, treatment) for Doctor Agent
-- **Keeps personality traits private** (MBTI, concerns, behavioral patterns) from Doctor Agent
-
-State:
-- Loaded prompt templates (16 MBTI + 2 gender + 2 case = 20 text files)
-- LLM for prompt composition
-
-Error States:
-- Missing prompt file → Return error, cannot construct persona
-- LLM generation failure → Retry with simpler combination, or use template concatenation
-
-Dependencies:
-- Prompt template library (.txt files)
-- LLM for dynamic prompt composition
-
-Example Prompt Composition:
-```
-MBTI Prompt (intj.txt) + Gender Prompt (male.txt) + Case Prompt (pneumothorax.txt)
-    → Patient Constructor Agent (LLM)
-    → System Prompt: "You are a 45-year-old male software engineer with INTJ personality...
-       You have been diagnosed with pneumothorax... [detailed background and behavior instructions]"
-```
-
----
-
-## Component: Evidence Validator (Green Agent)
-
-Props / Inputs:
-- Doctor's dialogue turn
-- Medical case context
-- Dialogue history
-
-Outputs:
-- Validation results per claim
-- Safety score (0-10)
-- Flagged concerns (list of issues)
-- Evidence quality assessment
-
-UI Structure:
-- N/A (Backend component)
-
-Behavior:
-- Extracts medical claims from doctor's message
-- Validates claims against medical knowledge base
-- Checks for potentially unsafe recommendations
-- Evaluates quality and appropriateness of evidence cited
-- Flags violations of medical ethics or informed consent principles
-
-State:
-- Medical knowledge base cache
-- Safety rules engine
-- Accumulated validation history for session
-
-Error States:
-- Claim extraction failure → Log warning, mark as "unable to validate"
-- Knowledge base unavailable → Continue without validation, flag for manual review
-- Ambiguous claim → Flag as "requires expert review"
-
-Dependencies:
-- Medical knowledge base (structured medical guidelines)
-- Safety rule engine (predefined safety checks)
-- NLP claim extraction tools
-- LLM for semantic claim analysis (optional)
+**Example:** MBTI (intj.txt) + Gender (male.txt) + Case (pneumothorax.txt) → "You are a 45-year-old male software engineer with INTJ personality..."
 
 ---
 
 ## Component: Doctor Agent (Purple Agent)
 
-Props / Inputs:
-- **PatientClinicalInfo** (age, gender, illness, diagnosis, recommended treatment) - NO personality traits
-- Dialogue history (previous messages exchanged)
-- A2A task request
+**Agent being evaluated - tries to persuade patient to accept surgery:**
 
-Outputs:
-- Doctor's dialogue turn (persuasion message)
-- Identified persuasion strategy (optional metadata)
+**Receives:** PatientClinicalInfo (age, gender, illness, diagnosis, treatment) + dialogue history
+**Does NOT receive:** Personality traits, concerns, background
 
-UI Structure:
-- N/A (Backend component)
+**Must:**
+- Discover patient personality through dialogue observation
+- Adapt persuasion strategy based on patient responses
+- Present medical evidence and address concerns
+- Build rapport and trust
 
-Behavior:
-- **Initially:** Only knows clinical facts (age, gender, illness, diagnosis, treatment recommendation)
-- **During dialogue:** Must discover patient personality, concerns, and communication style through conversation
-- Selects appropriate persuasion strategy based on observed patient behavior
-- Generates empathetic and medically accurate response
-- Presents evidence for surgery recommendation
-- Addresses patient concerns as they emerge in dialogue
-- Maintains professional medical standards
-- Adapts approach based on patient responses
-
-State:
-- Dialogue history
-- Current persuasion strategy
-- Patient state awareness
-- Previously used arguments
-
-Error States:
-- Invalid input format → Request clarification via A2A protocol
-- LLM generation timeout → Retry, then return default response
-- Response too long → Truncate and continue
-
-Dependencies:
-- LLM backend (OpenAI, Azure, Gemini, etc. via LiteLLM)
-- Persuasion strategy library (optional)
-- Medical decision support system (optional)
-- A2A SDK for communication
+**Dependencies:** LLM backend, A2A SDK
 
 ---
 
 ## Component: Persona Manager
 
-Props / Inputs:
-- Persona ID (e.g., "INTJ_M_PNEUMO")
+**Utility to load prompt templates:**
+- Maps persona_id (e.g., "INTJ_M_PNEUMO") to 3 .txt files
+- Returns paths to mbti/, gender/, cases/ prompt files
 
-Outputs:
-- Paths to the 3 required prompt files (MBTI, gender, case)
-- PatientPersona object (minimal, with ID fields)
-
-UI Structure:
-- N/A (Internal utility component)
-
-Behavior:
-- Parses persona_id to extract MBTI type, gender, and case
-- Locates corresponding .txt prompt files
-- Returns file paths or loaded text content
-- Creates minimal PatientPersona object
-
-State:
-- Prompt file directory structure
-- Mapping of persona components to files
-
-Error States:
-- Unknown MBTI type → Return error
-- Missing prompt file → Return error
-- Invalid persona_id format → Return error
-
-Dependencies:
-- Prompt template library (.txt files organized by category)
-
-File Structure:
+**Prompt Structure:**
 ```
-data/prompts/
-  mbti/
-    intj.txt, esfp.txt, ... (16 files)
-  gender/
-    male.txt, female.txt (2 files)
-  cases/
-    pneumothorax.txt, lung_cancer.txt (2 files)
+prompts/
+  mbti/ (16 files: intj.txt, esfp.txt, ...)
+  gender/ (2 files: male.txt, female.txt)
+  cases/ (2 files: pneumothorax.txt, lung_cancer.txt)
 ```
 
 ---
 
 ## Component: Per-Round Scoring Engine
 
-Props / Inputs:
-- Round number
-- Doctor's message for this round
-- Patient's response for this round
-- Complete dialogue history up to this round
-- Patient persona and medical case context
+**Evaluates each round immediately after patient responds:**
 
-Outputs:
-- RoundEvaluation with:
-  - empathy_score (0-10)
-  - persuasion_score (0-10)
-  - safety_score (0-10)
-  - patient_state_change (text description)
+**Scores (0-10 each):**
+- **Empathy:** Doctor's emotional tone, acknowledgment of concerns, rapport-building
+- **Persuasion:** Impact on patient receptiveness, argument quality, adaptation
+- **Safety:** Medical claim validation, informed consent, safety recommendations
 
-UI Structure:
-- N/A (Internal utility component)
+**Also tracks:** Patient state changes (concerns addressed, attitude shifts)
 
-Behavior:
-- **Empathy Evaluation:**
-  - Analyze doctor's emotional tone
-  - Check for acknowledgment of patient concerns
-  - Evaluate rapport-building techniques
-  
-- **Persuasion Effectiveness:**
-  - Measure impact on patient's receptiveness
-  - Track patient attitude changes
-  - Evaluate argument quality and relevance
-  
-- **Medical Safety:**
-  - Validate medical claims against knowledge base
-  - Flag potentially unsafe recommendations
-  - Check for informed consent principles
-  
-- **Patient State Tracking:**
-  - Analyze changes in patient's concerns
-  - Detect shifts in treatment acceptance
-  - Identify new concerns raised
-
-State:
-- Scoring rubric definitions
-- Medical knowledge base reference
-- Accumulated round scores
-
-Error States:
-- LLM evaluation failure → Use rule-based fallback scoring
-- Invalid metric value → Use default score (5), log warning
-- Incomplete dialogue data → Partial scoring with warnings
-
-Dependencies:
-- Evaluation LLM (for semantic analysis)
-- Scoring rubric configuration
-- Medical knowledge base
-- Safety validation rules
+**Output:** RoundEvaluation (scores + patient state change description)
 
 ---
 
 ## Component: Stop Condition Detector
 
-Props / Inputs:
-- Patient's latest response
-- Current round number
-- Maximum rounds configured
-- Dialogue history
+**Determines if dialogue should terminate:**
 
-Outputs:
-- should_stop: boolean
-- stop_reason: "patient_left" | "patient_accepted" | "max_rounds_reached" | null
+**Checks:**
+1. **Patient Left:** Explicit refusal keywords, strong negative sentiment, disengagement
+2. **Patient Accepted:** Explicit acceptance, strong positive commitment, treatment agreement
+3. **Max Rounds:** Current round ≥ max_rounds config
 
-UI Structure:
-- N/A (Internal utility component)
-
-Behavior:
-- **Patient Left Detection:**
-  - Check for explicit refusal keywords ("I don't want to talk", "I'm leaving", etc.)
-  - Detect strong negative sentiment
-  - Identify disengagement patterns
-  
-- **Patient Accepted Detection:**
-  - Check for explicit acceptance ("I'll do the surgery", "Let's proceed", etc.)
-  - Detect strong positive commitment
-  - Identify treatment agreement signals
-  
-- **Max Rounds Check:**
-  - Compare current round number to max_rounds config
-
-State:
-- Stop condition patterns (keywords, sentiment thresholds)
-- Round counter
-
-Error States:
-- Ambiguous patient response → Default to continue (false), log uncertainty
-- Detection LLM failure → Use rule-based keyword matching
-
-Dependencies:
-- LLM for semantic analysis (optional)
-- Rule-based pattern matching
-- Sentiment analysis tools (optional)
+**Output:** (should_stop: boolean, stop_reason: string)
 
 ---
 
 ## Component: Report Generator
 
-Props / Inputs:
-- Complete DialogueSession with all rounds
-- All RoundEvaluation results
-- Stop reason
-- Patient persona and medical case
+**Generates comprehensive PerformanceReport when dialogue stops:**
 
-Outputs:
-- PerformanceReport with:
-  - Per-round score breakdown
-  - Overall aggregate scores
-  - Strengths and weaknesses lists
-  - Key moments identification
-  - Actionable improvement recommendations
-  - Alternative approaches suggestions
+**Process:**
+1. **Aggregate scores:** Calculate mean per-round scores, identify best/worst rounds, trends
+2. **Qualitative analysis:** Extract key moments, identify consistent strengths/weaknesses
+3. **Generate suggestions:** Specific improvement recommendations, alternative approaches
 
-UI Structure:
-- N/A (Internal utility component)
+**Output:** PerformanceReport with numerical scores + actionable feedback
 
-Behavior:
-- **Score Aggregation:**
-  - Calculate mean scores across all rounds
-  - Identify best and worst rounds
-  - Detect score trends (improving/declining)
-  
-- **Qualitative Analysis:**
-  - Extract critical dialogue moments
-  - Identify consistent strengths (high scores across rounds)
-  - Identify consistent weaknesses (low scores across rounds)
-  - Analyze persuasion strategy evolution
-  
-- **Suggestion Generation:**
-  - Generate specific improvement recommendations based on weaknesses
-  - Suggest alternative approaches for low-scoring rounds
-  - Highlight successful techniques to reinforce
-
-State:
-- Statistical aggregation utilities
-- Analysis prompt templates
-
-Error States:
-- Report generation LLM failure → Provide basic numerical summary only
-- Incomplete data → Generate partial report with warnings
-
-Dependencies:
-- LLM for qualitative analysis
-- Statistical analysis utilities
-- Report formatting templates
+**Dependencies:** LLM for qualitative analysis, statistical utilities
 
 ---
 
 ## Component: Green Executor
 
-Props / Inputs:
-- EvalRequest from A2A client
-- Task ID from InMemoryTaskStore
-
-Outputs:
-- Task status updates (streaming)
-- Final EvalResult artifact
-- Task completion status
-
-UI Structure:
-- N/A (Backend orchestration component)
-
-Behavior:
-- Receives assessment requests via A2A protocol
-- Creates task in InMemoryTaskStore
+Orchestrates assessment execution via A2A protocol:
+- Receives EvalRequest from client
+- Creates and manages tasks in InMemoryTaskStore
 - Delegates to Judge Agent for execution
-- Manages task lifecycle (created → working → completed/failed)
-- Streams updates to client
-- Handles cancellation requests
-
-State:
-- Active tasks mapping (task_id → task state)
-- Task store reference
-- Agent card for green agent
-
-Error States:
-- Invalid request format → Return 400 error
-- Task not found → Return 404 error
-- Execution error → Update task status to failed, return error details
-
-Dependencies:
-- A2A SDK (server components)
-- InMemoryTaskStore
-- Judge Agent
-- Uvicorn (ASGI server)
+- Streams status updates to client
+- Handles task lifecycle (created → working → completed/failed)
 
 ---
 
