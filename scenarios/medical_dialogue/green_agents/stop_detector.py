@@ -3,11 +3,16 @@ Stop Condition Detector - Determines if dialogue should terminate
 """
 
 import logging
+import time
 from openai import OpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for critical evaluation calls
+MAX_RETRIES = 5
+RETRY_DELAY = 3  # seconds
 
 
 class StopDecision(BaseModel):
@@ -28,17 +33,21 @@ class StopConditionDetector:
     3. Max rounds reached (current round >= max_rounds)
     """
     
-    def __init__(self, client: OpenAI, model: str):
+    def __init__(self, client: OpenAI, model: str, max_retries: int = MAX_RETRIES, retry_delay: int = RETRY_DELAY):
         """
         Initialize StopConditionDetector
         
         Args:
             client: OpenAI client for LLM calls
             model: Model name to use
+            max_retries: Maximum number of retry attempts
+            retry_delay: Base delay between retries in seconds
         """
         self.client = client
         self.model = model
-        logger.info("StopConditionDetector initialized")
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        logger.info(f"StopConditionDetector initialized (retries={max_retries}, delay={retry_delay}s)")
     
     def should_stop(
         self,
@@ -106,17 +115,48 @@ Determine:
 - confidence: "high", "medium", or "low"
 - reasoning: explain your decision"""
 
-        # Use structured output
-        completion = self.client.beta.chat.completions.parse(
-            model=self.model,
-            messages=[
-                ChatCompletionSystemMessageParam(content=system_prompt, role="system"),
-                ChatCompletionUserMessageParam(content=user_prompt, role="user"),
-            ],
-            response_format=StopDecision,
-        )
+        # Use structured output with retry logic
+        decision = None
+        last_error = None
         
-        decision = completion.choices[0].message.parsed
+        for attempt in range(self.max_retries):
+            try:
+                logger.info(f"Checking stop condition (attempt {attempt + 1}/{self.max_retries})")
+                
+                completion = self.client.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=[
+                        ChatCompletionSystemMessageParam(content=system_prompt, role="system"),
+                        ChatCompletionUserMessageParam(content=user_prompt, role="user"),
+                    ],
+                    response_format=StopDecision,
+                )
+                
+                decision = completion.choices[0].message.parsed
+                
+                # Validate decision result
+                if decision is not None:
+                    logger.info(f"Stop decision successful: should_stop={decision.should_stop}")
+                    break
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: API returned None for decision")
+                    last_error = "API returned None for decision"
+                    
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                last_error = str(e)
+                
+            # Wait before retry (exponential backoff)
+            if attempt < self.max_retries - 1:
+                delay = self.retry_delay * (2 ** attempt)
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+        
+        # Raise exception if all retries failed - cannot fake stop decision
+        if decision is None:
+            error_msg = f"Failed to determine stop condition after {self.max_retries} attempts. Last error: {last_error}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         
         logger.info(f"Stop decision: should_stop={decision.should_stop}, "
                    f"reason={decision.stop_reason}, confidence={decision.confidence}")

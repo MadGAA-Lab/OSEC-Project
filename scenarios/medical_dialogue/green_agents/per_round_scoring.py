@@ -3,12 +3,17 @@ Per-Round Scoring Engine - LLM-based evaluation of each dialogue round
 """
 
 import logging
+import time
 from openai import OpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 from common import RoundEvaluation
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for critical evaluation calls
+MAX_RETRIES = 5
+RETRY_DELAY = 3  # seconds
 
 
 class PerRoundScoringEngine:
@@ -18,17 +23,21 @@ class PerRoundScoringEngine:
     Uses OpenAI structured output API with Pydantic RoundEvaluation model
     """
     
-    def __init__(self, client: OpenAI, model: str):
+    def __init__(self, client: OpenAI, model: str, max_retries: int = MAX_RETRIES, retry_delay: int = RETRY_DELAY):
         """
         Initialize PerRoundScoringEngine
         
         Args:
             client: OpenAI client for LLM calls
             model: Model name to use (should support structured output)
+            max_retries: Maximum number of retry attempts
+            retry_delay: Base delay between retries in seconds
         """
         self.client = client
         self.model = model
-        logger.info("PerRoundScoringEngine initialized")
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        logger.info(f"PerRoundScoringEngine initialized (retries={max_retries}, delay={retry_delay}s)")
     
     def evaluate_round(
         self,
@@ -116,20 +125,50 @@ Be objective, evidence-based, and specific in your evaluation."""
 
 Provide your evaluation with scores and analysis."""
 
-        # Use structured output API
-        completion = self.client.beta.chat.completions.parse(
-            model=self.model,
-            messages=[
-                ChatCompletionSystemMessageParam(content=system_prompt, role="system"),
-                ChatCompletionUserMessageParam(content=user_prompt, role="user"),
-            ],
-            response_format=RoundEvaluation,
-        )
+        # Use structured output API with retry logic
+        evaluation = None
+        last_error = None
         
-        evaluation = completion.choices[0].message.parsed
+        for attempt in range(self.max_retries):
+            try:
+                logger.info(f"Evaluating round {round_number} (attempt {attempt + 1}/{self.max_retries})")
+                
+                completion = self.client.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=[
+                        ChatCompletionSystemMessageParam(content=system_prompt, role="system"),
+                        ChatCompletionUserMessageParam(content=user_prompt, role="user"),
+                    ],
+                    response_format=RoundEvaluation,
+                )
+                
+                evaluation = completion.choices[0].message.parsed
+                
+                # Validate evaluation result
+                if evaluation is not None:
+                    # Set round number
+                    evaluation.round_number = round_number
+                    logger.info(f"Round {round_number} evaluation successful")
+                    break
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: API returned None for evaluation")
+                    last_error = "API returned None for evaluation"
+                    
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                last_error = str(e)
+                
+            # Wait before retry (exponential backoff)
+            if attempt < self.max_retries - 1:
+                delay = self.retry_delay * (2 ** attempt)
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
         
-        # Set round number
-        evaluation.round_number = round_number
+        # Raise exception if all retries failed - cannot fake evaluation data
+        if evaluation is None:
+            error_msg = f"Failed to evaluate round {round_number} after {self.max_retries} attempts. Last error: {last_error}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         
         logger.info(f"Round {round_number} evaluation complete: "
                    f"empathy={evaluation.empathy_score:.1f}, "

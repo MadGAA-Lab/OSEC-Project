@@ -3,6 +3,7 @@ Report Generator - Comprehensive final report generation
 """
 
 import logging
+import time
 from openai import OpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 from pydantic import BaseModel
@@ -10,6 +11,10 @@ from pydantic import BaseModel
 from common import PerformanceReport, RoundEvaluation
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for critical evaluation calls
+MAX_RETRIES = 5
+RETRY_DELAY = 3  # seconds
 
 
 class QualitativeAnalysis(BaseModel):
@@ -29,17 +34,21 @@ class ReportGenerator:
     Aggregates per-round scores and uses LLM for qualitative analysis
     """
     
-    def __init__(self, client: OpenAI, model: str):
+    def __init__(self, client: OpenAI, model: str, max_retries: int = MAX_RETRIES, retry_delay: int = RETRY_DELAY):
         """
         Initialize ReportGenerator
         
         Args:
             client: OpenAI client for LLM calls
             model: Model name to use
+            max_retries: Maximum number of retry attempts
+            retry_delay: Base delay between retries in seconds
         """
         self.client = client
         self.model = model
-        logger.info("ReportGenerator initialized")
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        logger.info(f"ReportGenerator initialized (retries={max_retries}, delay={retry_delay}s)")
     
     def generate_report(
         self,
@@ -138,12 +147,12 @@ class ReportGenerator:
         
         # Build per-round summary for context
         round_summary = ""
-        for eval in round_evaluations:
-            round_summary += f"\nRound {eval.round_number}: "
-            round_summary += f"Empathy={eval.empathy_score:.1f}, "
-            round_summary += f"Persuasion={eval.persuasion_score:.1f}, "
-            round_summary += f"Safety={eval.safety_score:.1f} | "
-            round_summary += f"Patient state: {eval.patient_state_change}"
+        for round_evaluation in round_evaluations:
+            round_summary += f"\nRound {round_evaluation.round_number}: "
+            round_summary += f"Empathy={round_evaluation.empathy_score:.1f}, "
+            round_summary += f"Persuasion={round_evaluation.persuasion_score:.1f}, "
+            round_summary += f"Safety={round_evaluation.safety_score:.1f} | "
+            round_summary += f"Patient state: {round_evaluation.patient_state_change}"
         
         system_prompt = """You are an expert medical dialogue evaluator providing actionable feedback.
 
@@ -203,16 +212,47 @@ Safety: {overall_safety:.2f}/10
 
 Provide comprehensive qualitative analysis with actionable insights."""
 
-        completion = self.client.beta.chat.completions.parse(
-            model=self.model,
-            messages=[
-                ChatCompletionSystemMessageParam(content=system_prompt, role="system"),
-                ChatCompletionUserMessageParam(content=user_prompt, role="user"),
-            ],
-            response_format=QualitativeAnalysis,
-        )
+        # Use structured output with retry logic
+        analysis = None
+        last_error = None
         
-        analysis = completion.choices[0].message.parsed
-        logger.info("Qualitative analysis generated")
+        for attempt in range(self.max_retries):
+            try:
+                logger.info(f"Generating qualitative analysis (attempt {attempt + 1}/{self.max_retries})")
+                
+                completion = self.client.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=[
+                        ChatCompletionSystemMessageParam(content=system_prompt, role="system"),
+                        ChatCompletionUserMessageParam(content=user_prompt, role="user"),
+                    ],
+                    response_format=QualitativeAnalysis,
+                )
+                
+                analysis = completion.choices[0].message.parsed
+                
+                # Validate analysis result
+                if analysis is not None:
+                    logger.info("Qualitative analysis generated successfully")
+                    break
+                else:
+                    logger.warning(f"Attempt {attempt + 1}: API returned None for analysis")
+                    last_error = "API returned None for analysis"
+                    
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                last_error = str(e)
+                
+            # Wait before retry (exponential backoff)
+            if attempt < self.max_retries - 1:
+                delay = self.retry_delay * (2 ** attempt)
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+        
+        # Raise exception if all retries failed - cannot fake report data
+        if analysis is None:
+            error_msg = f"Failed to generate qualitative analysis after {self.max_retries} attempts. Last error: {last_error}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         
         return analysis

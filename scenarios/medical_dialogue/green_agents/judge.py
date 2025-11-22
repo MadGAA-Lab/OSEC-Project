@@ -62,13 +62,17 @@ class MedicalJudge(GreenAgent):
     """
     
     def __init__(self, client: OpenAI, model: str):
+        self.patient_max_retries = 3
+        self.patient_retry_delay = 2
+        self.judge_max_retries = 5
+        self.judge_retry_delay = 3
         self._required_roles = ["doctor"]
         self._required_config_keys = ["persona_ids", "max_rounds"]
         self._client = client
         self._model = model
         self._tool_provider = ToolProvider()
         
-        # Initialize components
+        # Initialize components (retry config will be set via configure_retry_settings)
         self.persona_manager = PersonaManager()
         self.patient_constructor = PatientConstructor(client, model, self.persona_manager)
         self.scoring_engine = PerRoundScoringEngine(client, model)
@@ -76,6 +80,41 @@ class MedicalJudge(GreenAgent):
         self.report_generator = ReportGenerator(client, model)
         
         logger.info("MedicalJudge initialized")
+    
+    def configure_retry_settings(self, config: dict):
+        """
+        Configure retry settings for all components from TOML config
+        
+        Args:
+            config: EvalRequest.config dict containing retry settings
+        """
+        retry_config = config.get("retry", {})
+        
+        # Store retry settings for use when creating component instances
+        self.patient_max_retries = retry_config.get("patient_max_retries", 3)
+        self.patient_retry_delay = retry_config.get("patient_retry_delay", 2)
+        self.judge_max_retries = retry_config.get("judge_max_retries", 5)
+        self.judge_retry_delay = retry_config.get("judge_retry_delay", 3)
+        
+        # Recreate judge components with new retry settings
+        self.scoring_engine = PerRoundScoringEngine(
+            self._client, self._model, 
+            max_retries=self.judge_max_retries, 
+            retry_delay=self.judge_retry_delay
+        )
+        self.stop_detector = StopConditionDetector(
+            self._client, self._model,
+            max_retries=self.judge_max_retries,
+            retry_delay=self.judge_retry_delay
+        )
+        self.report_generator = ReportGenerator(
+            self._client, self._model,
+            max_retries=self.judge_max_retries,
+            retry_delay=self.judge_retry_delay
+        )
+        
+        logger.info(f"Retry settings configured: patient({self.patient_max_retries}, {self.patient_retry_delay}s), "
+                   f"judge({self.judge_max_retries}, {self.judge_retry_delay}s)")
     
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
         """Validate evaluation request (uses base EvalRequest from agentbeats)"""
@@ -97,6 +136,9 @@ class MedicalJudge(GreenAgent):
     async def run_eval(self, req: EvalRequest, updater: TaskUpdater) -> None:
         """Run complete evaluation across personas (uses base EvalRequest)"""
         logger.info(f"Starting medical dialogue evaluation: {req}")
+        
+        # Configure retry settings from TOML config
+        self.configure_retry_settings(req.config)
         
         try:
             doctor_url = str(req.participants["doctor"])
@@ -202,8 +244,12 @@ class MedicalJudge(GreenAgent):
         persona = self.patient_constructor.construct_patient_persona(persona_id)
         clinical_info = self.patient_constructor.extract_clinical_info(persona)
         
-        # Initialize patient agent
-        patient = PatientAgent(self._client, self._model, persona.system_prompt)
+        # Initialize patient agent with retry config
+        patient = PatientAgent(
+            self._client, self._model, persona.system_prompt,
+            max_retries=self.patient_max_retries,
+            retry_delay=self.patient_retry_delay
+        )
         
         # Create session
         session = DialogueSession(

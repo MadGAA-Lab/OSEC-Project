@@ -5,8 +5,11 @@ Patient Agent - Simulates patient with personality-driven behavior
 import logging
 import random
 import time
+from typing import List
+
 from openai import OpenAI
-from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam
+from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, \
+    ChatCompletionAssistantMessageParam
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +38,7 @@ class PatientAgent:
     that is HIDDEN from Doctor Agent
     """
     
-    def __init__(self, client: OpenAI, model: str, system_prompt: str):
+    def __init__(self, client: OpenAI, model: str, system_prompt: str, max_retries: int = MAX_RETRIES, retry_delay: int = RETRY_DELAY):
         """
         Initialize PatientAgent
         
@@ -43,13 +46,17 @@ class PatientAgent:
             client: OpenAI client for LLM calls
             model: Model name to use
             system_prompt: Full patient persona system prompt (includes personality)
+            max_retries: Maximum number of retry attempts
+            retry_delay: Base delay between retries in seconds
         """
         self.client = client
         self.model = model
         self.system_prompt = system_prompt
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self.dialogue_history: list[dict] = []  # List of {role: str, content: str}
         
-        logger.info("PatientAgent initialized with personality-driven system prompt")
+        logger.info(f"PatientAgent initialized with personality-driven system prompt (retries={max_retries}, delay={retry_delay}s)")
     
     def reset(self):
         """Reset dialogue history for new conversation"""
@@ -77,7 +84,11 @@ class PatientAgent:
         })
         
         # Build conversation messages for LLM
-        messages = [
+        messages: List[
+            ChatCompletionSystemMessageParam |
+            ChatCompletionUserMessageParam |
+            ChatCompletionAssistantMessageParam
+        ] = [
             ChatCompletionSystemMessageParam(content=self.system_prompt, role="system")
         ]
         
@@ -98,9 +109,9 @@ class PatientAgent:
         patient_response = None
         last_error = None
         
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(self.max_retries):
             try:
-                logger.info(f"Generating patient response (attempt {attempt + 1}/{MAX_RETRIES})")
+                logger.info(f"Generating patient response (attempt {attempt + 1}/{self.max_retries})")
                 
                 completion = self.client.chat.completions.create(
                     model=self.model,
@@ -122,14 +133,14 @@ class PatientAgent:
                 last_error = str(e)
                 
             # Wait before retry (exponential backoff)
-            if attempt < MAX_RETRIES - 1:
-                delay = RETRY_DELAY * (2 ** attempt)
+            if attempt < self.max_retries - 1:
+                delay = self.retry_delay * (2 ** attempt)
                 logger.info(f"Retrying in {delay} seconds...")
                 time.sleep(delay)
         
         # Handle final failure
         if patient_response is None or len(patient_response.strip()) == 0:
-            error_msg = f"Failed to generate patient response after {MAX_RETRIES} attempts. Last error: {last_error}"
+            error_msg = f"Failed to generate patient response after {self.max_retries} attempts. Last error: {last_error}"
             logger.error(error_msg)
             # Use a random fallback message to maintain natural conversation flow
             patient_response = random.choice(FALLBACK_MESSAGES)

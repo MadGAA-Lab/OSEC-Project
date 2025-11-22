@@ -35,3 +35,13 @@ persona_ids = ["INTJ_M_PNEUMO"]
 
 # Maximum dialogue rounds per persona
 max_rounds = 5
+
+# Retry configuration for LLM API calls
+[config.retry]
+# Patient agent retry settings (uses fallback messages on failure)
+patient_max_retries = 3
+patient_retry_delay = 2  # seconds
+
+# Judge components retry settings (raises error on failure - cannot fake evaluation data)
+judge_max_retries = 5
+judge_retry_delay = 3  # seconds
