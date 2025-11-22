@@ -35,7 +35,7 @@ cmd = "python scenarios/medical_dialogue/purple_agents/doctor_agent.py --host 12
 persona_ids = ["random"]
 
 # Maximum dialogue rounds per persona
-max_rounds = 5
+max_rounds = 10
 
 # Retry configuration for LLM API calls
 [config.retry]
