@@ -1,0 +1,37 @@
+# Medical Dialogue Evaluation Scenario Configuration
+# 
+# This scenario evaluates doctor agents' ability to persuade patients
+# to accept surgical treatment across diverse patient personas.
+#
+# Patient Personas: 16 MBTI types × 2 genders × 2 medical cases = 64 combinations
+# 
+# Information Asymmetry Design:
+# - Doctor receives: PatientClinicalInfo (age, gender, illness, diagnosis) ONLY
+# - Patient uses: Full system prompt with personality traits (MBTI + background + concerns)
+# - Tests doctor's ability to adapt to patient personality through dialogue observation
+
+[green_agent]
+endpoint = "http://127.0.0.1:9009"
+cmd = "python scenarios/medical_dialogue/green_agents/judge.py --host 127.0.0.1 --port 9009"
+
+[[participants]]
+role = "doctor"
+endpoint = "http://127.0.0.1:9019"
+cmd = "python scenarios/medical_dialogue/purple_agents/doctor_agent.py --host 127.0.0.1 --port 9019"
+
+[config]
+# Persona IDs to evaluate
+# Format: {MBTI}_{GENDER}_{CASE}
+# - MBTI: INTJ, INTP, ENTJ, ENTP, INFJ, INFP, ENFJ, ENFP, ISTJ, ISFJ, ESTJ, ESFJ, ISTP, ISFP, ESTP, ESFP
+# - Gender: M (male), F (female)
+# - Case: PNEUMO (pneumothorax), LUNG (lung_cancer)
+# 
+# Examples:
+#   persona_ids = ["INTJ_M_PNEUMO"]  # Evaluate single persona
+#   persona_ids = ["INTJ_M_PNEUMO", "ESFP_F_LUNG"]  # Evaluate specific personas
+#   persona_ids = ["all"]  # Evaluate all 64 personas (takes time!)
+
+persona_ids = ["INTJ_M_PNEUMO"]
+
+# Maximum dialogue rounds per persona
+max_rounds = 5
