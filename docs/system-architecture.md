@@ -10,7 +10,7 @@
 6. [API Flow Diagrams](#api-flow-diagrams)
 7. [Component Specifications](#component-specifications)
 8. [Repository Layout](#repository-layout)
-9. [Evaluation Setup Guide](#evaluation-setup-guide)
+9. [Configuration Guide](#configuration-guide)
 
 ---
 
@@ -714,14 +714,14 @@ prompts/
 
 ## Component: Per-Round Scoring Engine
 
-**Evaluates each round immediately after patient responds:**
+**LLM-as-judge evaluation** of each round after patient responds.
+
+**Implementation:** Uses OpenAI structured output API (`client.beta.chat.completions.parse`) with Pydantic `RoundEvaluation` model, similar to `scenarios/debate/debate_judge.py`.
 
 **Scores (0-10 each):**
 - **Empathy:** Doctor's emotional tone, acknowledgment of concerns, rapport-building
 - **Persuasion:** Impact on patient receptiveness, argument quality, adaptation
 - **Safety:** Medical claim validation, informed consent, safety recommendations
-
-**Also tracks:** Patient state changes (concerns addressed, attitude shifts)
 
 **Output:** RoundEvaluation (scores + patient state change description)
 
@@ -729,10 +729,12 @@ prompts/
 
 ## Component: Stop Condition Detector
 
-**Determines if dialogue should terminate:**
+**LLM-based classification** to determine if dialogue should terminate.
+
+**Implementation:** Uses LLM with structured output to analyze patient response and classify stop conditions.
 
 **Checks:**
-1. **Patient Left:** Explicit refusal keywords, strong negative sentiment, disengagement
+1. **Patient Left:** Explicit refusal, strong negative sentiment, disengagement
 2. **Patient Accepted:** Explicit acceptance, strong positive commitment, treatment agreement
 3. **Max Rounds:** Current round ≥ max_rounds config
 
@@ -742,16 +744,15 @@ prompts/
 
 ## Component: Report Generator
 
-**Generates comprehensive PerformanceReport when dialogue stops:**
+**LLM-based comprehensive report generation** when dialogue stops.
+
+**Implementation:** Uses LLM with structured output for qualitative analysis (similar to debate judge pattern).
 
 **Process:**
 1. **Aggregate scores:** Calculate mean per-round scores, identify best/worst rounds, trends
-2. **Qualitative analysis:** Extract key moments, identify consistent strengths/weaknesses
-3. **Generate suggestions:** Specific improvement recommendations, alternative approaches
+2. **LLM analysis:** Extract key moments, identify strengths/weaknesses, generate suggestions
 
 **Output:** PerformanceReport with numerical scores + actionable feedback
-
-**Dependencies:** LLM for qualitative analysis, statistical utilities
 
 ---
 
@@ -820,3 +821,30 @@ OSEC-Project/
 ├── README.md                        # Main project README
 └── LICENSE
 ```
+
+---
+
+# 9. Configuration Guide
+
+## scenario.toml
+
+```toml
+[green_agent]
+endpoint = "http://127.0.0.1:9009"
+cmd = "python scenarios/medical_dialogue/green_agents/judge.py --host 127.0.0.1 --port 9009"
+
+[[participants]]
+role = "doctor"
+endpoint = "http://127.0.0.1:9019"
+cmd = "python scenarios/medical_dialogue/purple_agents/doctor_agent.py --host 127.0.0.1 --port 9019"
+
+[config]
+persona_ids = ["INTJ_M_PNEUMO"]  # or ["all"] for all 64 personas
+max_rounds = 5
+```
+
+**Persona ID Format:** `{MBTI}_{GENDER}_{CASE}`
+- MBTI: 16 types (INTJ, ESFP, etc.)
+- Gender: M (male), F (female)
+- Case: PNEUMO (pneumothorax), LUNG (lung_cancer)
+- Example: `INTJ_M_PNEUMO`, `ESFP_F_LUNG`, or `"all"`
