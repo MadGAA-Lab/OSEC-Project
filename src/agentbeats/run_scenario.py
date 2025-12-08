@@ -12,7 +12,7 @@ from a2a.client import A2ACardResolver
 load_dotenv(override=True)
 
 
-async def wait_for_agents(cfg: dict, timeout: int = 120) -> bool:
+async def wait_for_agents(cfg: dict, timeout: int = 30) -> bool:
     """Wait for all agents to be healthy and responding."""
     endpoints = []
 
@@ -33,7 +33,7 @@ async def wait_for_agents(cfg: dict, timeout: int = 120) -> bool:
     async def check_endpoint(endpoint: str) -> bool:
         """Check if an endpoint is responding by fetching the agent card."""
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
+            async with httpx.AsyncClient(timeout=2) as client:
                 resolver = A2ACardResolver(httpx_client=client, base_url=endpoint)
                 await resolver.get_agent_card()
                 return True
@@ -51,7 +51,7 @@ async def wait_for_agents(cfg: dict, timeout: int = 120) -> bool:
             return True
 
         print(f"  {ready_count}/{len(endpoints)} agents ready, waiting...")
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
 
     print(f"Timeout: Only {ready_count}/{len(endpoints)} agents became ready after {timeout}s")
     return False
