@@ -312,9 +312,15 @@ Write a cohesive patient persona in second person ("You are...") that brings thi
         system_msg = """You are generating roleplay examples for a patient character in a medical dialogue simulation.
 
 Given the patient's background, generate realistic examples of how they would:
-1. Say something (dialogue)
+1. Say something (dialogue) - KEEP IT SHORT and natural, like real patient speech
 2. Think something (inner thoughts that may differ from what they say)
 3. Do something (physical action or body language)
+
+CRITICAL REALISM REQUIREMENTS:
+- Real patients speak briefly (1-2 sentences typically, not long explanations)
+- Real patients have LIMITED medical knowledge (use simple/incorrect terms, ask questions)
+- Real patient speech is NOT grammatically perfect (sentence fragments, hesitations, informal language)
+- Real patients express emotions naturally (worry, confusion, fear)
 
 Also generate appropriate acknowledgement phrases for the roleplay setup process.
 
@@ -345,13 +351,15 @@ Generate these fields:
 
 1. role_core_description: The FULL detailed character description (use the system prompt provided below)
 2. role_acknowledgement_phrase: How this patient would acknowledge understanding the roleplay setup (1 sentence, in character)
-3. role_rules_and_constraints: Rules for staying in character during medical consultation (2-3 sentences)
+3. role_rules_and_constraints: Rules for staying in character during medical consultation (MUST include warnings about: speaking concisely like a real patient, having limited medical knowledge and using simple/layperson terms, speaking naturally with imperfect grammar and hesitations)
 4. role_confirmation_phrase: How this patient would confirm they'll follow the rules (1 sentence, in character)
-5. example_say: A realistic line of dialogue this patient might say to the doctor (natural, emotional, reflecting their concerns)
+5. example_say: A realistic SHORT line of dialogue this patient might say to the doctor (1-2 sentences max, natural speech with possible hesitations or imperfect grammar, emotionally authentic)
 6. example_think: What this patient might be thinking internally (may differ from what they say)
 7. example_do: A physical action or body language this patient might display (based on personality and emotional state)
 
 Make the examples specific to THIS patient's personality, situation, and concerns.
+
+CRITICAL: The example_say should be BRIEF and sound like real patient speech - not polished, not verbose, possibly with hesitations like "um", "I mean", sentence fragments, or informal language.
 
 Detailed character description to use for role_core_description:
 {character_description}"""
