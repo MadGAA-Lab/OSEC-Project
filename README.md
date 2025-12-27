@@ -1,5 +1,5 @@
 # OSEC-Project
-## Open Surgical Evaluation and Communication
+## Objective Structured Clinical Examination
 
 An AI evaluation framework for assessing medical dialogue agents through realistic doctor-patient consultations using the **GAA (Generative Adversarial Agents)** system.
 
