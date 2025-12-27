@@ -96,16 +96,161 @@ scenarios/medical_dialogue/  # Medical dialogue evaluation
 
 This mirrors real medical practice where doctors must discover patient information through conversation.
 
+## System Architecture
+
+The following diagram shows how the agent evaluation system works:
+
+```mermaid
+graph TB
+    subgraph "AgentBeats Platform"
+        Runner[Scenario Runner]
+    end
+    
+    subgraph "Green Agents - Evaluation System"
+        Judge[Judge Agent<br/>Central Orchestrator]
+        
+        subgraph "Patient Simulation"
+            PersonaMgr[Persona Manager<br/>64 Personas]
+            PatientConst[Patient Constructor<br/>Generate Personas]
+            PatientAgent[Patient Agent<br/>MBTI-driven Behavior]
+        end
+        
+        subgraph "Evaluation Components"
+            PerRoundScore[Per-Round Scoring<br/>LLM-as-Judge]
+            StopDetector[Stop Detector<br/>Termination Logic]
+            ReportGen[Report Generator<br/>Final Analysis]
+        end
+        
+        Criteria[(Criteria CSV<br/>30 Evaluation Criteria)]
+    end
+    
+    subgraph "Purple Agent - Under Evaluation"
+        Doctor[Doctor Agent<br/>Being Tested]
+    end
+    
+    %% Initialization Flow
+    Runner -->|1. Start Evaluation| Judge
+    Judge -->|2. Get Persona| PersonaMgr
+    PersonaMgr -->|3. Load Templates| PatientConst
+    PatientConst -->|4. Generate Background| PatientAgent
+    PatientConst -->|5. Clinical Info| Judge
+    
+    %% Round-based Dialogue Loop
+    Judge -->|6. Clinical Context| Doctor
+    Doctor -->|7. Doctor Response| Judge
+    Judge -->|8. Doctor Message| PatientAgent
+    PatientAgent -->|9. Patient Response| Judge
+    
+    %% Evaluation Flow
+    Judge -->|10. Evaluate Round| PerRoundScore
+    Criteria -->|Evaluation Criteria| PerRoundScore
+    PerRoundScore -->|11. Scores<br/>Empathy/Persuasion/Safety| Judge
+    
+    Judge -->|12. Check Stop| StopDetector
+    StopDetector -->|13. Continue/Stop| Judge
+    
+    %% Final Report
+    Judge -->|14. Generate Report| ReportGen
+    ReportGen -->|15. Final Analysis| Runner
+    
+    %% Styling
+    classDef green fill:#90EE90,stroke:#228B22,stroke-width:2px
+    classDef purple fill:#DDA0DD,stroke:#8B008B,stroke-width:2px
+    classDef data fill:#87CEEB,stroke:#4682B4,stroke-width:2px
+    classDef eval fill:#FFD700,stroke:#FF8C00,stroke-width:2px
+    
+    class Judge,PersonaMgr,PatientConst,PatientAgent green
+    class Doctor purple
+    class Criteria data
+    class PerRoundScore,StopDetector,ReportGen eval
+```
+
+### Evaluation Flow
+
+The system follows a sophisticated multi-round evaluation process:
+
+#### Phase 1: Initialization
+1. **Scenario Runner** starts evaluation with persona configuration
+2. **Judge Agent** receives evaluation request with persona IDs and max rounds
+3. **Persona Manager** selects personas (e.g., INTJ_M_PNEUMO)
+4. **Patient Constructor** generates:
+   - Full patient background (age, symptoms, personality traits, concerns)
+   - Clinical info subset (diagnosis, treatment details) → sent to Doctor
+   - Character description (MBTI-driven behavior) → for Patient Agent
+   - Roleplay examples → for context priming
+
+#### Phase 2: Round-Based Dialogue Loop
+For each round (max 10 rounds):
+
+5. **Judge** sends clinical context to **Doctor Agent**:
+   - Patient demographics (age, gender)
+   - Diagnosis and recommended treatment
+   - Risks, benefits, prognosis
+   - Previous dialogue history
+   - ⚠️ **NOT included**: Patient personality, symptoms, concerns
+
+6. **Doctor Agent** generates response attempting to:
+   - Show empathy and build trust
+   - Address patient concerns
+   - Persuade patient to accept treatment
+   - Ensure safety and informed consent
+
+7. **Patient Agent** generates personality-driven response:
+   - Uses MBTI personality traits (hidden from Doctor)
+   - Responds naturally with concerns and emotions
+   - May resist, question, or gradually accept treatment
+
+8. **Per-Round Scoring Engine** evaluates the round:
+   - Uses 30 criteria from `judge_criteria.csv`
+   - Categories: Empathy (1-10), Persuasion (11-20), Safety (21-30)
+   - LLM judges each criterion as met/not_met/not_relevant
+   - Calculates scores: Empathy, Persuasion, Safety (0-10 each)
+
+9. **Stop Detector** checks termination conditions:
+   - Patient explicitly left/refused treatment
+   - Patient accepted treatment
+   - Max rounds reached
+   - Uses LLM to detect patient commitment/refusal signals
+
+10. Loop continues or stops based on stop condition
+
+#### Phase 3: Final Report Generation
+11. **Report Generator** creates comprehensive analysis:
+    - Aggregate scores across all rounds (weighted 30/40/30)
+    - Qualitative analysis: strengths, weaknesses, key moments
+    - Improvement recommendations
+    - Alternative approaches
+    - Overall evaluation summary
+
+12. Results returned to **Scenario Runner** for multi-persona aggregation
+
+### Information Asymmetry Design
+
+The system creates realistic doctor-patient dynamics through information asymmetry:
+
+| Information | Doctor Has | Patient Has | Judge Has |
+|------------|------------|-------------|-----------|
+| Patient Personality (MBTI) | ❌ | ✅ | ✅ |
+| Patient Symptoms | ❌ | ✅ | ✅ |
+| Patient Concerns/Fears | ❌ | ✅ | ✅ |
+| Medical Diagnosis | ✅ | ✅ | ✅ |
+| Treatment Details | ✅ | ✅ | ✅ |
+| Dialogue History | ✅ | ✅ | ✅ |
+| Evaluation Scores | ❌ | ❌ | ✅ |
+
+This mirrors real medical consultations where doctors must discover patient information through conversation.
+
 ## System Components
 
 ### Green Agents (Evaluation System)
 
-- **Judge** - Orchestrates dialogue flow and produces final evaluation reports
-- **Patient Agent** - Simulates patients with MBTI-driven behaviors and responses
-- **Patient Constructor** - Generates unique patient personas from templates
-- **Per-Round Scoring** - LLM-based evaluation of each dialogue round
-- **Stop Detector** - Determines when dialogue should terminate
-- **Report Generator** - Creates comprehensive performance analysis
+- **Judge** - Central orchestrator managing the entire evaluation lifecycle
+- **Persona Manager** - Manages 64 patient personas (16 MBTI × 2 cases × 2 genders)
+- **Patient Constructor** - Generates complete patient backgrounds from templates using LLM
+- **Patient Agent** - Simulates patients with MBTI-driven personality-consistent behaviors
+- **Per-Round Scoring** - LLM-as-judge evaluation using 30 criteria across 3 categories
+- **Stop Detector** - LLM-based classification to detect dialogue termination conditions
+- **Report Generator** - Creates comprehensive performance analysis with qualitative insights
 
 ### Purple Agents (Evaluated)
 
