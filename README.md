@@ -1,4 +1,4 @@
-# OSEC-Project
+# OSCE-Project
 ## Objective Structured Clinical Examination
 
 An AI evaluation framework for assessing medical dialogue agents through realistic doctor-patient consultations using the **GAA (Generative Adversarial Agents)** system.
@@ -15,8 +15,8 @@ An AI evaluation framework for assessing medical dialogue agents through realist
 
 1. Clone the repo
 ```bash
-git clone https://github.com/MadGAA-Lab/OSEC-Project.git
-cd OSEC-Project
+git clone https://github.com/MadGAA-Lab/OSCE-Project.git
+cd OSCE-Project
 ```
 
 2. Install dependencies
